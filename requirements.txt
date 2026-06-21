@@ -1,0 +1,14 @@
+langchain
+langchain-google-genai
+langchain-text-splitters
+langchain-chroma
+chromadb
+pypdf
+pillow
+google-genai
+tenacity
+streamlit>=1.37
+plotly
+umap-learn
+pandas
+numpy

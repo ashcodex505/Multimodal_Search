@@ -1,0 +1,27 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Environment / secrets
+.env
+.rate_state.json
+
+# Generated data — re-create with prepare_atlas.py
+atlas_data.parquet
+cluster_meta.json
+chroma_db/
+manifest.json
+.cache/
+.umap_cache.json
+
+# macOS
+.DS_Store
+
+# Node
+raycast-extension/node_modules/
+
+# Temp files from indexer
+*_segment.mp4
