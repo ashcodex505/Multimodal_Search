@@ -12,13 +12,14 @@ from pathlib import Path
 from google import genai
 from google.genai import types
 import chromadb
+from paths import CHROMA_DB_DIR, ensure_runtime_dirs
 
 # ---------------------------------------------------------------------------
 # Init
 # ---------------------------------------------------------------------------
 
-PROJECT_DIR = Path(__file__).parent
-CHROMA_DIR = PROJECT_DIR / "chroma_db"
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+CHROMA_DIR = CHROMA_DB_DIR
 EMBEDDING_MODEL = "gemini-embedding-2-preview"
 EMBEDDING_DIM = 768
 
@@ -28,6 +29,7 @@ if not api_key:
     sys.exit(1)
 
 client = genai.Client(api_key=api_key)
+ensure_runtime_dirs()
 chroma_client = chromadb.PersistentClient(path=str(CHROMA_DIR))
 collection = chroma_client.get_or_create_collection(
     name="multimodal_index",
