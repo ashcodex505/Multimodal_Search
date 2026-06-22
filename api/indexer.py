@@ -4,9 +4,9 @@ Indexer — scans folders and embeds PDFs, images, and videos into ChromaDB
 using Gemini Embedding 2 (natively multimodal).
 
 Usage:
-    python indexer.py [folder_path ...]
-    python indexer.py                     # defaults to common user folders
-    python indexer.py ~/Desktop ~/Photos
+    python api/indexer.py [folder_path ...]
+    python api/indexer.py                     # defaults to common user folders
+    python api/indexer.py ~/Desktop ~/Photos
 """
 
 import os
@@ -22,15 +22,16 @@ from google.genai import types
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pypdf import PdfReader
 from tenacity import retry, wait_exponential, stop_after_attempt
-import chromadb 
+import chromadb
+from paths import CHROMA_DB_DIR, MANIFEST_FILE, RATE_STATE_FILE, ensure_runtime_dirs
 
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
 
-PROJECT_DIR = Path(__file__).parent
-CHROMA_DIR = PROJECT_DIR / "chroma_db"
-MANIFEST_PATH = PROJECT_DIR / "manifest.json"
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+CHROMA_DIR = CHROMA_DB_DIR
+MANIFEST_PATH = MANIFEST_FILE
 EMBEDDING_MODEL = "gemini-embedding-2-preview"
 EMBEDDING_DIM = 768
 
@@ -75,7 +76,7 @@ class RateLimiter:
     """Simple rate limiter for free-tier Gemini API."""
 
     def __init__(self):
-        self.state_path = PROJECT_DIR / ".rate_state.json"
+        self.state_path = RATE_STATE_FILE
         self.last_call = 0.0
         self.daily_calls = 0
         self.day_key = time.strftime("%Y-%m-%d")
@@ -127,6 +128,7 @@ api_key = os.environ.get("GOOGLE_API_KEY")
 if not api_key:
     sys.exit("ERROR: GOOGLE_API_KEY environment variable not set.")
 
+ensure_runtime_dirs()
 client = genai.Client(api_key=api_key)
 
 chroma_client = chromadb.PersistentClient(path=str(CHROMA_DIR))
@@ -149,6 +151,7 @@ def load_manifest() -> dict:
 
 
 def save_manifest(manifest: dict):
+    MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
     MANIFEST_PATH.write_text(json.dumps(manifest, indent=2))
 
 
@@ -453,7 +456,7 @@ def index_specific_files(file_paths: list[str]):
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--files":
-        # Index specific files: indexer.py --files /path/to/a.pdf /path/to/b.jpg ...
+        # Index specific files: api/indexer.py --files /path/to/a.pdf /path/to/b.jpg ...
         index_specific_files(sys.argv[2:])
     elif len(sys.argv) > 1:
         index_multiple(sys.argv[1:])
