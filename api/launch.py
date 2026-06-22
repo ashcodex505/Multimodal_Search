@@ -8,7 +8,7 @@ Extends Apple Embedding Atlas directly:
   - Adds /gemini-search endpoint for Gemini-powered semantic search
   - Adds /open-file endpoint so the panel can open files in Finder
 
-Usage: python launch.py [--port 5055]
+Usage: python api/launch.py [--port 5055]
 """
 
 import asyncio
@@ -38,15 +38,26 @@ from embedding_atlas.data_source import DataSource
 from embedding_atlas.cache import sha256_hexdigest
 from embedding_atlas.options import make_embedding_atlas_props
 from embedding_atlas.version import __version__
+from paths import (
+    ATLAS_CACHE_DIR,
+    ATLAS_DATA_FILE,
+    CHROMA_DB_DIR,
+    CLUSTER_META_FILE,
+    ENV_FILE,
+    MANIFEST_FILE,
+    ROOT_DIR,
+    SEARCH_INDEX_DATA_DIR,
+    UI_DASHBOARD_DIR,
+    ensure_runtime_dirs,
+)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Config
 # ─────────────────────────────────────────────────────────────────────────────
 
-PROJECT_DIR     = Path(__file__).parent
-PARQUET_FILE    = PROJECT_DIR / "atlas_data.parquet"
-CHROMA_DIR      = PROJECT_DIR / "chroma_db"
-ENV_FILE        = PROJECT_DIR / ".env"
+PROJECT_DIR     = ROOT_DIR
+PARQUET_FILE    = ATLAS_DATA_FILE
+CHROMA_DIR      = CHROMA_DB_DIR
 ATLAS_STATIC    = Path(embedding_atlas.__file__).parent / "static"
 
 EMBEDDING_MODEL = "gemini-embedding-2-preview"
@@ -167,7 +178,7 @@ def build_custom_static() -> str:
 
     # Copy our search panel assets
     for fname in ["search_panel.js", "search_panel.css"]:
-        src = PROJECT_DIR / fname
+        src = UI_DASHBOARD_DIR / fname
         if src.exists():
             shutil.copy(src, tmp)
 
@@ -193,13 +204,14 @@ def build_custom_static() -> str:
 @click.option("--host", default="localhost", show_default=True)
 @click.option("--no-browser", is_flag=True, default=False)
 def main(port: int, host: str, no_browser: bool):
+    ensure_runtime_dirs()
     api_key = load_api_key()
     if not api_key:
         print("ERROR: GOOGLE_API_KEY not set. Add it to .env")
         sys.exit(1)
 
     if not PARQUET_FILE.exists():
-        print("ERROR: atlas_data.parquet not found. Run: python prepare_atlas.py")
+        print("ERROR: atlas_data.parquet not found. Run: python api/prepare_atlas.py")
         sys.exit(1)
 
     # ── Load data ────────────────────────────────────────────────────────────
@@ -231,6 +243,7 @@ def main(port: int, host: str, no_browser: bool):
 
     # ── Build Atlas app ───────────────────────────────────────────────────────
     print("Building Atlas server...")
+    os.chdir(SEARCH_INDEX_DATA_DIR)
 
     props = make_embedding_atlas_props(
         row_id      = "row_id",
@@ -378,8 +391,6 @@ def main(port: int, host: str, no_browser: bool):
         })
 
     # ── /cluster-meta endpoint ───────────────────────────────────────────────
-    CLUSTER_META_FILE = PROJECT_DIR / "cluster_meta.json"
-
     @app.get("/static/cluster_meta.json")
     async def get_cluster_meta():
         if not CLUSTER_META_FILE.exists():
@@ -445,11 +456,10 @@ def main(port: int, host: str, no_browser: bool):
         return out
 
     def _load_mf() -> dict:
-        return json.loads(PROJECT_DIR.joinpath("manifest.json").read_text()) \
-               if (PROJECT_DIR / "manifest.json").exists() else {}
+        return json.loads(MANIFEST_FILE.read_text()) if MANIFEST_FILE.exists() else {}
 
     def _save_mf(m: dict):
-        (PROJECT_DIR / "manifest.json").write_text(json.dumps(m, indent=2))
+        MANIFEST_FILE.write_text(json.dumps(m, indent=2))
 
     # ── /api/scan-folders ──────────────────────────────────────────────────────
     @app.get("/api/scan-folders")
@@ -556,7 +566,7 @@ def main(port: int, host: str, no_browser: bool):
             return JSONResponse({"error": "session not found"}, status_code=404)
 
         python_bin   = PROJECT_DIR / "venv" / "bin" / "python3"
-        indexer_path = PROJECT_DIR / "indexer.py"
+        indexer_path = PROJECT_DIR / "api" / "indexer.py"
 
         async def generate():
             try:
@@ -628,7 +638,7 @@ def main(port: int, host: str, no_browser: bool):
                       or [f for f in _DEFAULT_FOLDERS if Path(f).exists()]
 
         python_bin  = PROJECT_DIR / "venv" / "bin" / "python3"
-        indexer_path = PROJECT_DIR / "indexer.py"
+        indexer_path = PROJECT_DIR / "api" / "indexer.py"
 
         async def generate():
             try:
