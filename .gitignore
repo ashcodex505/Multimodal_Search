@@ -8,6 +8,7 @@ __pycache__/
 # Environment / secrets
 .env
 .rate_state.json
+.claude/
 
 # Generated data — re-create with prepare_atlas.py
 atlas_data.parquet
@@ -16,12 +17,15 @@ chroma_db/
 manifest.json
 .cache/
 .umap_cache.json
+chroma-db/
+search-index-data/
 
 # macOS
 .DS_Store
 
 # Node
 raycast-extension/node_modules/
+ui-dashboard/raycast-extension/node_modules/
 
 # Temp files from indexer
 *_segment.mp4
