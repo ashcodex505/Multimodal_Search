@@ -1,6 +1,11 @@
 /* search_panel.css — Multimodal Search overlay */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
+/* Force Atlas to always use dark mode regardless of OS light/dark preference */
+:root { color-scheme: dark; }
+body { background: #0a0d1a; }
+.embedding-atlas-root { color-scheme: dark; }
+
 /* ── Panel — floating default (used before docking fires) ── */
 #ms-panel {
   position: fixed; top: 14px; right: 14px; z-index: 9999;
@@ -310,7 +315,7 @@
 /* ══════════════════════════════════════════════════════════════════════════════
    INDEX MODAL
 ══════════════════════════════════════════════════════════════════════════════ */
-.ms-index-card { width: 640px; }
+.ms-index-card { width: 640px; height: 80vh; }
 .ms-index-desc { font-size: 13px; color: #8899b0; margin: 0 0 14px; }
 
 /* Folder checkboxes */
@@ -652,6 +657,29 @@ table tbody tr.ms-row-selected td:first-child { border-left: 3px solid #818cf8; 
 }
 
 /* ── File explorer (explore step) ─────────────────────────────────────────── */
+
+/* Search row */
+.ms-explore-search-row {
+  display: flex; align-items: center; padding: 6px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.07); flex-shrink: 0; gap: 6px;
+}
+.ms-explore-search {
+  flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px; color: #d4dbe8; font-size: 12px; padding: 5px 10px;
+  outline: none; font-family: inherit;
+}
+.ms-explore-search:focus { border-color: rgba(96,168,255,0.5); background: rgba(96,168,255,0.06); }
+.ms-explore-search::placeholder { color: #4a5f7a; }
+.ms-explore-search-clear {
+  background: none; border: none; color: #4a5f7a; font-size: 12px; cursor: pointer;
+  padding: 3px 6px; border-radius: 4px; flex-shrink: 0; line-height: 1;
+}
+.ms-explore-search-clear:hover { background: rgba(255,255,255,0.08); color: #d4dbe8; }
+.ms-explore-file-dir {
+  font-size: 10px; color: #4a5f7a; flex-shrink: 0; max-width: 180px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'SF Mono', monospace;
+}
+
 .ms-explore-header {
   display: flex; align-items: center; gap: 8px;
   padding: 8px 10px 6px; border-bottom: 1px solid rgba(255,255,255,0.07);

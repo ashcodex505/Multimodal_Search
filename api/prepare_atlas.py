@@ -234,7 +234,7 @@ def main():
         source_to_rows.setdefault(src, []).append(i)
 
     rows = []
-    skipped = 0
+    no_coords = []   # (src_path, fname, ftype, preview, avg_vec) for files without UMAP coords
     for src_path, indices in source_to_rows.items():
         meta0 = metadatas[indices[0]]
         ftype = meta0.get("type", "unknown")
@@ -249,9 +249,6 @@ def main():
 
         doc_id = doc_ids[primary_idx]
         x, y = umap_cache.get(doc_id, (None, None))
-        if x is None or y is None:
-            skipped += 1
-            continue
 
         # Merge text from all chunks of this document
         preview = " ".join(
@@ -269,8 +266,12 @@ def main():
         if norm > 0:
             avg_vec /= norm
 
+        if x is None or y is None:
+            no_coords.append((src_path, doc_id, fname, ftype, preview, avg_vec))
+            continue
+
         rows.append({
-            "_idx":    len(rows),     # will become row_id
+            "_idx":    len(rows),
             "doc_id":  doc_id,
             "path":    src_path,
             "name":    fname,
@@ -281,7 +282,35 @@ def main():
             "_vec":    avg_vec,
         })
 
-    print(f"  {len(rows):,} unique files ({skipped} skipped — no UMAP coords)")
+    # Approximate UMAP coords for newly-indexed files (not yet in the cache).
+    # Place each one near its nearest semantic neighbors that do have coords.
+    if no_coords and rows:
+        print(f"  Approximating UMAP coords for {len(no_coords)} newly-indexed file(s)...")
+        known_vecs = np.array([r["_vec"] for r in rows], dtype=np.float32)
+        rng = np.random.default_rng(seed=42)
+        for src_path, doc_id, fname, ftype, preview, avg_vec in no_coords:
+            sims = known_vecs @ avg_vec.astype(np.float32)
+            top_k = np.argsort(sims)[-10:]
+            ax = float(np.mean([rows[i]["x"] for i in top_k]))
+            ay = float(np.mean([rows[i]["y"] for i in top_k]))
+            # small jitter so the point doesn't land exactly on a neighbor
+            ax += float(rng.normal(0, 0.4))
+            ay += float(rng.normal(0, 0.4))
+            rows.append({
+                "_idx":    len(rows),
+                "doc_id":  doc_id,
+                "path":    src_path,
+                "name":    fname,
+                "type":    ftype,
+                "x":       ax,
+                "y":       ay,
+                "preview": preview,
+                "_vec":    avg_vec,
+            })
+    elif no_coords:
+        print(f"  Skipping {len(no_coords)} file(s) — no existing UMAP coords to approximate from")
+
+    print(f"  {len(rows):,} unique files ({len(no_coords)} approximated — new since last UMAP run)")
 
     # ── 4. Compute K-nearest neighbors ───────────────────────────────────────
     print(f"[4/6] Computing {NEIGHBORS_K}-nearest neighbors...")

@@ -259,12 +259,17 @@ def main(port: int, host: str, no_browser: bool):
         show_charts = False,
         show_embedding = True,
     )
-    # Default to Density display mode
+    # Force dark mode and density display
+    props["colorScheme"] = "dark"
     props.setdefault("embeddingViewConfig", {})["mode"] = "density"
 
+    # Use a stable identifier that doesn't change when cluster labels are recomputed,
+    # so Atlas finds its cached layout after every parquet rebuild.
+    stable_meta = {"props": {k: v for k, v in props.items()
+                              if k not in ("labels", "embeddingViewLabels")}}
     metadata   = {"props": props}
     identifier = sha256_hexdigest(
-        [__version__, [str(PARQUET_FILE)], metadata], scope="DataSource"
+        [__version__, [str(PARQUET_FILE)], stable_meta], scope="DataSource"
     )
     dataset    = DataSource(identifier, df, metadata)
 
@@ -310,50 +315,69 @@ def main(port: int, host: str, no_browser: bool):
             )
             vec = res.embeddings[0].values
 
-            # 2. Query ChromaDB
+            # 2. Query ChromaDB (include metadatas for fallback on recently-indexed files)
             where = {"type": type_filter} if type_filter else None
             hits  = col.query(
                 query_embeddings=[vec],
                 n_results=min(k, col.count()),
                 where=where,
+                include=["distances", "metadatas"],
             )
-            chroma_ids = hits["ids"][0]       if hits["ids"]       else []
-            distances  = hits["distances"][0]  if hits["distances"]  else []
+            chroma_ids  = hits["ids"][0]        if hits["ids"]        else []
+            distances   = hits["distances"][0]   if hits["distances"]   else []
+            chroma_metas = hits["metadatas"][0]  if hits["metadatas"]  else []
 
-            # 3. Map to parquet row_ids
+            # 3. Map to parquet row_ids; fall back to ChromaDB metadata for
+            #    files indexed after server start (not yet in the parquet).
             results = []
-            seen    = set()
-            for cid, dist in zip(chroma_ids, distances):
+            seen    = set()  # de-dupe by file path (PDFs have multiple chunks)
+            for cid, dist, cmeta in zip(chroma_ids, distances, chroma_metas):
                 rid = id_to_row.get(cid)
                 if rid is None:
                     base = cid.split("::chunk")[0]
                     rid  = path_to_row.get(base) or id_to_row.get(base)
-                if rid is None or rid in seen:
-                    continue
-                seen.add(rid)
-                info = row_info.get(rid, {})
+
+                raw_score = float(1 - dist)
+                score = round(raw_score, 3) if math.isfinite(raw_score) else 0.0
 
                 # pandas reads NULL string columns as float('nan') from parquet —
                 # must convert to None/str before JSON serialisation.
                 def _str(v, default=""):
                     return default if (v is None or (isinstance(v, float) and not math.isfinite(v))) else str(v)
 
-                thumb = info.get("thumbnail")
-                if isinstance(thumb, float) and not math.isfinite(thumb):
-                    thumb = None
-
-                raw_score = float(1 - dist)
-                score = round(raw_score, 3) if math.isfinite(raw_score) else 0.0
-
-                results.append({
-                    "row_id":    int(rid),
-                    "name":      _str(info.get("name")),
-                    "path":      _str(info.get("path")),
-                    "type":      _str(info.get("type")),
-                    "thumbnail": thumb,
-                    "preview":   _str(info.get("preview_text"))[:200],
-                    "score":     score,
-                })
+                if rid is not None:
+                    if rid in seen:
+                        continue
+                    seen.add(rid)
+                    info  = row_info.get(rid, {})
+                    thumb = info.get("thumbnail")
+                    if isinstance(thumb, float) and not math.isfinite(thumb):
+                        thumb = None
+                    results.append({
+                        "row_id":  int(rid),
+                        "name":    _str(info.get("name")),
+                        "path":    _str(info.get("path")),
+                        "type":    _str(info.get("type")),
+                        "thumbnail": thumb,
+                        "preview": _str(info.get("preview_text"))[:200],
+                        "score":   score,
+                    })
+                else:
+                    # File was indexed after server start — use ChromaDB metadata directly.
+                    # row_id -1 means it has no Atlas point yet (harmless: SQL CASE skips it).
+                    src = (cmeta or {}).get("source", "")
+                    if not src or src in seen:
+                        continue
+                    seen.add(src)
+                    results.append({
+                        "row_id":  -1,
+                        "name":    (cmeta or {}).get("name", Path(src).name if src else ""),
+                        "path":    src,
+                        "type":    (cmeta or {}).get("type", ""),
+                        "thumbnail": None,
+                        "preview": "",
+                        "score":   score,
+                    })
 
             return JSONResponse({
                 "row_ids": [r["row_id"] for r in results],
@@ -462,19 +486,41 @@ def main(port: int, host: str, no_browser: bool):
         MANIFEST_FILE.write_text(json.dumps(m, indent=2))
 
     # ── /api/scan-folders ──────────────────────────────────────────────────────
-    @app.get("/api/scan-folders")
-    async def api_scan_folders(folders: str = ""):
-        folder_list = [f.strip() for f in folders.split(",") if f.strip()] \
-                      or [f for f in _DEFAULT_FOLDERS if Path(f).exists()]
+    @app.api_route("/api/scan-folders", methods=["GET", "POST"])
+    async def api_scan_folders(request: Request, folders: str = ""):
+        if request.method == "POST":
+            body = await request.json()
+            folder_list = [str(f).strip() for f in body.get("folders", []) if str(f).strip()]
+        else:
+            folder_list = [f.strip() for f in folders.split(",") if f.strip()]
+        folder_list = folder_list or [f for f in _DEFAULT_FOLDERS if Path(f).exists()]
 
         manifest = _load_mf()
         new_files, indexed_count = [], 0
 
         for fp in folder_list:
-            folder = Path(fp).expanduser().resolve()
-            if not folder.exists():
+            p = Path(fp).expanduser().resolve()
+            if not p.exists():
                 continue
-            for file in _discover(folder):
+            # Individual file path
+            if p.is_file():
+                ext = p.suffix.lstrip(".").lower()
+                if ext not in _SUPPORTED_EXTS:
+                    continue
+                fpath = str(p)
+                if fpath in manifest:
+                    indexed_count += 1
+                else:
+                    new_files.append({
+                        "path":   fpath,
+                        "name":   p.name,
+                        "type":   _SUPPORTED_EXTS[ext],
+                        "size":   p.stat().st_size,
+                        "folder": str(p.parent),
+                    })
+                continue
+            # Directory — discover recursively
+            for file in _discover(p):
                 fpath = str(file)
                 if fpath in manifest:
                     indexed_count += 1
@@ -484,7 +530,7 @@ def main(port: int, host: str, no_browser: bool):
                         "name":   file.name,
                         "type":   _SUPPORTED_EXTS[file.suffix.lstrip(".").lower()],
                         "size":   file.stat().st_size,
-                        "folder": str(folder),
+                        "folder": str(p),
                     })
 
         return JSONResponse({
@@ -655,6 +701,51 @@ def main(port: int, host: str, no_browser: bool):
                         yield f"data: {json.dumps({'line': text})}\n\n"
                 await proc.wait()
                 yield f"data: {json.dumps({'done': True, 'code': proc.returncode})}\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+        return StreamingResponse(
+            generate(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    # ── /api/rebuild-atlas (SSE) ──────────────────────────────────────────────
+    # Rebuilds atlas_data.parquet from ChromaDB, then restarts the server so the
+    # new scatter-plot data is loaded. Frontend polls until server is back, then reloads.
+    @app.get("/api/rebuild-atlas")
+    async def api_rebuild_atlas():
+        python_bin    = PROJECT_DIR / "venv" / "bin" / "python3"
+        prepare_path  = PROJECT_DIR / "api" / "prepare_atlas.py"
+        _restart_args = [str(python_bin), str(PROJECT_DIR / "api" / "launch.py"),
+                         "--port", str(port), "--host", host, "--no-browser"]
+
+        async def generate():
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    str(python_bin), "-u", str(prepare_path),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
+                    env={**os.environ, "PYTHONUNBUFFERED": "1"},
+                    cwd=str(PROJECT_DIR / "api"),
+                )
+                async for line in proc.stdout:
+                    text = line.decode("utf-8", errors="replace").rstrip()
+                    if text:
+                        yield f"data: {json.dumps({'line': text})}\n\n"
+                await proc.wait()
+                if proc.returncode == 0:
+                    yield f"data: {json.dumps({'done': True})}\n\n"
+                    # Flush, then replace this process with a fresh server instance
+                    await asyncio.sleep(0.5)
+                    import threading
+                    def _restart():
+                        import time as _time
+                        _time.sleep(1.0)
+                        os.execv(str(python_bin), _restart_args)
+                    threading.Thread(target=_restart, daemon=True).start()
+                else:
+                    yield f"data: {json.dumps({'error': f'prepare_atlas.py exited with code {proc.returncode}'})}\n\n"
             except Exception as e:
                 yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
