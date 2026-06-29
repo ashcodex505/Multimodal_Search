@@ -1,0 +1,44 @@
+{
+  "name": "multimodal-search",
+  "title": "Multimodal Search",
+  "description": "Search images, PDFs, and videos using Gemini Embedding 2",
+  "icon": "command-icon.png",
+  "author": "ash",
+  "license": "MIT",
+  "commands": [
+    {
+      "name": "search",
+      "title": "Multimodal Search",
+      "subtitle": "Search files with AI",
+      "description": "Search across images, PDFs, and videos using Gemini embeddings",
+      "mode": "view"
+    },
+    {
+      "name": "index",
+      "title": "Index All My Files",
+      "description": "Index Documents, Desktop, Downloads, Pictures & Movies",
+      "mode": "no-view"
+    }
+  ],
+  "dependencies": {
+    "@raycast/api": "^1.93.0",
+    "@raycast/utils": "^1.19.0"
+  },
+  "devDependencies": {
+    "@raycast/eslint-config": "^1.0.11",
+    "@types/node": "22.13.14",
+    "@types/react": "19.0.12",
+    "eslint": "^9.23.0",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.2",
+    "react": "^19.0.0"
+  },
+  "scripts": {
+    "build": "ray build",
+    "dev": "ray develop",
+    "fix-lint": "ray lint --fix",
+    "lint": "ray lint",
+    "prepublishOnly": "echo \"Error: no publish\" && exit 1",
+    "publish": "npx @anthropic-ai/publish-raycast-extension --hierarchical-categories"
+  }
+}
