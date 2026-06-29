@@ -1,0 +1,42 @@
+#!/bin/bash
+
+PROJECT="$HOME/multimodal-search"
+PYTHON="$PROJECT/venv/bin/python3"
+LAUNCHER="$PROJECT/api/launch.py"
+PORT=5055
+PIDFILE="/tmp/multimodal-search.pid"
+LOGFILE="/tmp/multimodal-search.log"
+
+# ── Load API key ────────────────────────────────────────────────────────────
+ENV_FILE="$PROJECT/.env"
+if [ -f "$ENV_FILE" ]; then
+    while IFS= read -r line; do
+        case "$line" in
+            GOOGLE_API_KEY=*) export GOOGLE_API_KEY="${line#*=}" ;;
+        esac
+    done < "$ENV_FILE"
+fi
+
+# ── If already running, just open the browser ──────────────────────────────
+if [ -f "$PIDFILE" ]; then
+    OLD_PID=$(cat "$PIDFILE" 2>/dev/null)
+    if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+        open "http://localhost:$PORT"
+        exit 0
+    fi
+    rm -f "$PIDFILE"
+fi
+
+# ── Launch our Atlas extension server ──────────────────────────────────────
+"$PYTHON" "$LAUNCHER" --port "$PORT" --no-browser >> "$LOGFILE" 2>&1 &
+echo $! > "$PIDFILE"
+
+# ── Wait up to 15 seconds for server to be ready ───────────────────────────
+for i in $(seq 1 30); do
+    if curl -sf "http://localhost:$PORT" >/dev/null 2>&1; then
+        break
+    fi
+    sleep 0.5
+done
+
+open "http://localhost:$PORT"
