@@ -4,6 +4,17 @@ Multimodal Search is a local semantic search system for images, PDFs, and videos
 
 This root README is the main onboarding document for the project. If someone is new to the repo, start here first. The folder-level `README.md` files are there to add local context once you drill into a specific part of the tree.
 
+## Table of Contents
+
+- [What This Project Does](#what-this-project-does)
+- [How The System Works](#how-the-system-works)
+- [How To Navigate The Repo](#how-to-navigate-the-repo)
+- [Setup](#setup)
+  - [Prerequisites](#prerequisites)
+  - [Initial Setup](#initial-setup)
+  - [First-Time Startup](#first-time-startup)
+- [Reference & Developer Docs](#folder-guide)
+
 ## What This Project Does
 
 At a high level, the project lets a user:
@@ -126,14 +137,14 @@ This is a convenience layer for Raycast script commands and shell-based entrypoi
 
 ## Setup
 
-## Prerequisites
+### Prerequisites
 
 - **Python 3.11 or newer** (the repo uses 3.13; 3.11/3.12 also work)
 - **ffmpeg** — required for video thumbnail extraction and clipping videos >20 MB before embedding. Install with Homebrew: `brew install ffmpeg`
 - **A Google Gemini API key** — get one free at [aistudio.google.com](https://aistudio.google.com). The free tier covers 1,500 embedding calls per day, which is enough to index a few hundred files.
 - **Node.js** — only needed if you want to work on the Raycast extension
 
-## Initial Setup
+### Initial Setup
 
 ```bash
 git clone <your-repo-url> ~/multimodal-search
@@ -154,7 +165,7 @@ Create the root `.env` file with your API key:
 echo "GOOGLE_API_KEY=your_key_here" > .env
 ```
 
-## First-Time Startup
+### First-Time Startup
 
 The startup sequence has a specific order that matters. Read through it before running anything.
 
