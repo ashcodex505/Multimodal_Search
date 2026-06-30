@@ -16,6 +16,9 @@ import hashlib
 import subprocess
 import time
 from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from google import genai
 from google.genai import types

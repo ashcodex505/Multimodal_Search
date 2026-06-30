@@ -10,5 +10,11 @@ tenacity
 streamlit>=1.37
 plotly
 umap-learn
+scikit-learn
 pandas
 numpy
+fastapi
+uvicorn
+click
+python-dotenv
+embedding-atlas

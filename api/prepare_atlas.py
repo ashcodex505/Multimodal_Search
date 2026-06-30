@@ -308,7 +308,33 @@ def main():
                 "_vec":    avg_vec,
             })
     elif no_coords:
-        print(f"  Skipping {len(no_coords)} file(s) — no existing UMAP coords to approximate from")
+        # No existing coords to approximate from — run UMAP from scratch.
+        print(f"  No UMAP cache found. Running UMAP on {len(no_coords)} file(s)...")
+        import umap as umap_lib
+        all_new_vecs = np.array([entry[5] for entry in no_coords], dtype=np.float32)
+        n_neighbors = min(15, len(no_coords) - 1) if len(no_coords) > 1 else 1
+        reducer = umap_lib.UMAP(n_components=2, n_neighbors=n_neighbors,
+                                min_dist=0.1, metric="cosine", random_state=42)
+        coords_2d = reducer.fit_transform(all_new_vecs)
+        # Save to cache so future runs can approximate newly-added files.
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        cache_rows = []
+        for (src_path, doc_id, fname, ftype, preview, avg_vec), (cx, cy) in zip(no_coords, coords_2d):
+            cache_rows.append({"id": doc_id, "x": float(cx), "y": float(cy)})
+            rows.append({
+                "_idx":    len(rows),
+                "doc_id":  doc_id,
+                "path":    src_path,
+                "name":    fname,
+                "type":    ftype,
+                "x":       float(cx),
+                "y":       float(cy),
+                "preview": preview,
+                "_vec":    avg_vec,
+            })
+        cache_path = CACHE_DIR / "umap_cache.json"
+        cache_path.write_text(json.dumps({"rows": cache_rows}))
+        print(f"  UMAP done. Cache saved to {cache_path}")
 
     print(f"  {len(rows):,} unique files ({len(no_coords)} approximated — new since last UMAP run)")
 

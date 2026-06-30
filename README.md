@@ -29,8 +29,8 @@ The repo is split into four main concerns:
 
 - backend/API code in `api/`
 - browser and desktop-facing UI code in `ui-dashboard/`
-- persistent vector database storage in `chroma-db/`
-- generated metadata and Atlas artifacts in `search-index-data/`
+- persistent vector database storage in `chroma-db/` <-- this will show up once you start indexing your file 
+- generated metadata and Atlas artifacts in `search-index-data/` <-- also will show up once you start indexing your files by running indexer.py 
 
 ## How The System Works
 
@@ -183,8 +183,6 @@ echo "GOOGLE_API_KEY=your_key_here" > .env
 
 The startup sequence has a specific order that matters. Read through it before running anything.
 
-**Why the order matters:** The scatter-plot coordinates (UMAP x/y) are computed by the browser on first load and cached to disk. `prepare_atlas.py` reads that cache to assign positions to your files. If you run `prepare_atlas.py` before ever opening the browser, it has no coordinates to read and has to approximate positions for everything — the visualization will be less accurate. The correct order is: index → launch → open browser → prepare atlas.
-
 ### Step 1 — Index your files
 
 This scans your files, embeds them with Gemini, and stores vectors in ChromaDB. With no arguments it defaults to Documents, Desktop, Downloads, Pictures, and Movies.
@@ -202,48 +200,35 @@ python api/indexer.py ~/Desktop ~/Documents
 
 This step makes API calls. The free tier allows ~1,450 calls per day. The indexer tracks this and will stop cleanly if you hit the limit — re-run it tomorrow and it will skip already-indexed files.
 
-### Step 2 — Launch the server and open the browser
-
-```bash
-python api/launch.py
-```
-
-The server starts on `http://localhost:5055` and opens the browser automatically. **Wait for the scatter plot to fully render before continuing to step 3.** This is when Atlas computes and caches the UMAP coordinates to disk.
-
-> If the scatter plot shows a loading spinner or is empty, wait a few seconds. On first load with many files it can take 10–30 seconds for the layout to compute.
-
-### Step 3 — Build the visualization dataset
-
-Once the scatter plot has rendered in the browser, stop the server (`Ctrl+C`) and run:
+### Step 2 — Build the visualization dataset
 
 ```bash
 python api/prepare_atlas.py
 ```
 
-This reads the UMAP cache written in step 2, computes nearest neighbors, generates thumbnails, runs k-means clustering, and writes `search-index-data/atlas_data.parquet`. You will see output like:
+This computes UMAP coordinates, nearest neighbors, thumbnails, and k-means clustering, then writes `search-index-data/atlas_data.parquet`. You will see output like:
 
 ```
 [1/6] Connecting to ChromaDB...
 [2/6] Pulling vectors + metadata from ChromaDB...
 [3/6] Loading UMAP coordinates...
-  Loaded 953 UMAP coords from cache
 ...
 ✓ Saved atlas_data.parquet (1.5 MB, 953 rows)
 ```
 
-### Step 4 — Launch again
+### Step 3 — Launch the server
 
 ```bash
 python api/launch.py
 ```
 
-The dashboard is now fully operational. Search works, the scatter plot shows your files, and graph mode is available.
+The server starts on `http://localhost:5055` and opens the browser automatically. The dashboard is now fully operational — search works, the scatter plot shows your files, and graph mode is available.
 
 **After the first time,** day-to-day use is just `python api/launch.py`. Only re-run the indexer and `prepare_atlas.py` when you have new files to add.
 
 ## Day-To-Day Commands
 
-Always activate the venv first if it is not already active:
+Always activate the venv first if it is not already active and make sure it is using python 3.11
 
 ```bash
 source ~/multimodal-search/venv/bin/activate
@@ -255,6 +240,7 @@ source ~/multimodal-search/venv/bin/activate
 python api/launch.py
 python api/launch.py --port 8080 --no-browser
 ```
+
 
 ### Index new files
 
