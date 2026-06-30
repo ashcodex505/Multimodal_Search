@@ -128,12 +128,10 @@ This is a convenience layer for Raycast script commands and shell-based entrypoi
 
 ## Prerequisites
 
-You should have:
-
-- Python 3.11+ recommended
-- `ffmpeg` available on the machine for video thumbnailing/processing
-- a valid `GOOGLE_API_KEY`
-- Node.js only if you want to work on the Raycast extension
+- **Python 3.11 or newer** (the repo uses 3.13; 3.11/3.12 also work)
+- **ffmpeg** — required for video thumbnail extraction and clipping videos >20 MB before embedding. Install with Homebrew: `brew install ffmpeg`
+- **A Google Gemini API key** — get one free at [aistudio.google.com](https://aistudio.google.com). The free tier covers 1,500 embedding calls per day, which is enough to index a few hundred files.
+- **Node.js** — only needed if you want to work on the Raycast extension
 
 ## Initial Setup
 
@@ -148,7 +146,9 @@ pip install -r requirements.txt
 pip install embedding-atlas
 ```
 
-Create the root `.env` file:
+> **Note:** `embedding-atlas` is not in `requirements.txt` because it is a standalone Apple package. You must install it separately as shown above.
+
+Create the root `.env` file with your API key:
 
 ```bash
 echo "GOOGLE_API_KEY=your_key_here" > .env
@@ -156,23 +156,73 @@ echo "GOOGLE_API_KEY=your_key_here" > .env
 
 ## First-Time Startup
 
-For a completely fresh machine or clean repo:
+The startup sequence has a specific order that matters. Read through it before running anything.
 
-1. Activate the environment.
-2. Run the indexer on some files.
-3. Build the Atlas dataset.
-4. Launch the server.
+**Why the order matters:** The scatter-plot coordinates (UMAP x/y) are computed by the browser on first load and cached to disk. `prepare_atlas.py` reads that cache to assign positions to your files. If you run `prepare_atlas.py` before ever opening the browser, it has no coordinates to read and has to approximate positions for everything — the visualization will be less accurate. The correct order is: index → launch → open browser → prepare atlas.
+
+### Step 1 — Index your files
+
+This scans your files, embeds them with Gemini, and stores vectors in ChromaDB. With no arguments it defaults to Documents, Desktop, Downloads, Pictures, and Movies.
 
 ```bash
 source venv/bin/activate
 python api/indexer.py
-python api/prepare_atlas.py
+```
+
+Or specify folders explicitly:
+
+```bash
+python api/indexer.py ~/Desktop ~/Documents
+```
+
+This step makes API calls. The free tier allows ~1,450 calls per day. The indexer tracks this and will stop cleanly if you hit the limit — re-run it tomorrow and it will skip already-indexed files.
+
+### Step 2 — Launch the server and open the browser
+
+```bash
 python api/launch.py
 ```
 
-The dashboard starts on `http://localhost:5055` by default.
+The server starts on `http://localhost:5055` and opens the browser automatically. **Wait for the scatter plot to fully render before continuing to step 3.** This is when Atlas computes and caches the UMAP coordinates to disk.
+
+> If the scatter plot shows a loading spinner or is empty, wait a few seconds. On first load with many files it can take 10–30 seconds for the layout to compute.
+
+### Step 3 — Build the visualization dataset
+
+Once the scatter plot has rendered in the browser, stop the server (`Ctrl+C`) and run:
+
+```bash
+python api/prepare_atlas.py
+```
+
+This reads the UMAP cache written in step 2, computes nearest neighbors, generates thumbnails, runs k-means clustering, and writes `search-index-data/atlas_data.parquet`. You will see output like:
+
+```
+[1/6] Connecting to ChromaDB...
+[2/6] Pulling vectors + metadata from ChromaDB...
+[3/6] Loading UMAP coordinates...
+  Loaded 953 UMAP coords from cache
+...
+✓ Saved atlas_data.parquet (1.5 MB, 953 rows)
+```
+
+### Step 4 — Launch again
+
+```bash
+python api/launch.py
+```
+
+The dashboard is now fully operational. Search works, the scatter plot shows your files, and graph mode is available.
+
+**After the first time,** day-to-day use is just `python api/launch.py`. Only re-run the indexer and `prepare_atlas.py` when you have new files to add.
 
 ## Day-To-Day Commands
+
+Always activate the venv first if it is not already active:
+
+```bash
+source ~/multimodal-search/venv/bin/activate
+```
 
 ### Start the server
 
@@ -181,30 +231,32 @@ python api/launch.py
 python api/launch.py --port 8080 --no-browser
 ```
 
-### Index files
+### Index new files
 
-Default folders:
+Default folders (Documents, Desktop, Downloads, Pictures, Movies):
 
 ```bash
 python api/indexer.py
 ```
 
-Specific folders:
+Specific folders or individual files:
 
 ```bash
 python api/indexer.py ~/Desktop ~/Projects
 python api/indexer.py ~/Documents ~/Downloads
+python api/indexer.py --files ~/Desktop/resume.pdf ~/Pictures/photo.jpg
 ```
 
-### Rebuild visualization data
-
-Run this after indexing new files:
+After indexing, rebuild the visualization and restart the server:
 
 ```bash
 python api/prepare_atlas.py
+python api/launch.py
 ```
 
-### CLI search
+You can also trigger a rebuild from inside the dashboard using the "Index Files" button — it handles this automatically.
+
+### CLI search (no dashboard needed)
 
 ```bash
 python api/searcher.py "lecture notes on neural networks"
@@ -214,7 +266,7 @@ python api/searcher.py --type image "product screenshot"
 
 ## Important Developer Workflows
 
-## If you change indexing logic
+### If you change indexing logic
 
 You usually need to:
 
@@ -222,7 +274,7 @@ You usually need to:
 2. re-run `python api/prepare_atlas.py`
 3. restart `python api/launch.py`
 
-## If you change dashboard UI code
+### If you change dashboard UI code
 
 You usually only need to:
 
@@ -231,7 +283,7 @@ You usually only need to:
 
 The UI assets are injected by `api/launch.py`, so dashboard changes typically do not require re-indexing.
 
-## If you change path layout or runtime file locations
+### If you change path layout or runtime file locations
 
 Update `api/paths.py` first. That file should remain the single shared definition of where backend code expects the repo’s generated/runtime data to live.
 
