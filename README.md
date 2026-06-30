@@ -139,10 +139,22 @@ This is a convenience layer for Raycast script commands and shell-based entrypoi
 
 ### Prerequisites
 
-- **Python 3.11 or newer** (the repo uses 3.13; 3.11/3.12 also work)
+- **Python 3.11 or newer** (the repo uses 3.13; 3.11/3.12 also work — 3.9/3.10 will not work)
 - **ffmpeg** — required for video thumbnail extraction and clipping videos >20 MB before embedding. Install with Homebrew: `brew install ffmpeg`
 - **A Google Gemini API key** — get one free at [aistudio.google.com](https://aistudio.google.com). The free tier covers 1,500 embedding calls per day, which is enough to index a few hundred files.
 - **Node.js** — only needed if you want to work on the Raycast extension
+
+If `python3 --version` returns 3.9 or 3.10, install a newer version first:
+
+```bash
+brew install python@3.11
+```
+
+Then verify the path is available:
+
+```bash
+python3.11 --version
+```
 
 ### Initial Setup
 
@@ -150,12 +162,14 @@ This is a convenience layer for Raycast script commands and shell-based entrypoi
 git clone <your-repo-url> ~/multimodal-search
 cd ~/multimodal-search
 
-python3 -m venv venv
+python3.11 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 pip install embedding-atlas
 ```
+
+> **Note:** Use `python3.11` (or `python3.12`, `python3.13`) explicitly when creating the venv — not plain `python3`, which may still point to the system 3.9. Once the venv is active, `python` and `pip` inside it always use the version it was created with.
 
 > **Note:** `embedding-atlas` is not in `requirements.txt` because it is a standalone Apple package. You must install it separately as shown above.
 
